@@ -8,9 +8,17 @@
 
 #include "math/mat4.h"
 
+enum objectType
+{
+	OBJECT,
+	BILLBOARD,
+	TERRAIN,
+	OUTLINES
+};
+
 struct Object {
 	Mesh mesh;
-
+	objectType objtype;
 	LineMesh linemesh;
 
 	sg_view tex{};
@@ -50,5 +58,8 @@ struct Object {
 		//combine & invert
 		model = mat4::mul(trans, mat4::mul(rot, scl));
 	}
+
+	//aabb stuff
+
 };
 #endif

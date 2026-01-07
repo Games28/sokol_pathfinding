@@ -10,6 +10,8 @@
 #include "math/mat4.h"
 
 #include "mesh.h"
+#include "Camera.h"
+#include "AABB.h"
 
 //for time
 #include <ctime>
@@ -17,8 +19,7 @@
 #include "texture_utils.h"
 #include "Object.h"
 
-#define MAX_PARTICLES (512 * 1024)
-#define NUM_PARTICLES_EMITTED_PER_FRAME (10)
+
 
 //y p => x y z
 //0 0 => 0 0 1
@@ -31,15 +32,7 @@ static vf3d polar3D(float yaw, float pitch) {
 }
 
 
-struct
-{
-	vf3d pos{ 0,2,2 };
-	vf3d dir;
-	float yaw = 0;
-	float pitch = 0;
-	mat4 proj, view;
-	mat4 view_proj;
-}cam;
+
 
 struct Light
 {
@@ -51,6 +44,7 @@ struct Light
 struct Demo : SokolEngine {
 	sg_pipeline default_pip{};
 	sg_pipeline line_pip{};
+	sg_pipeline terrain_pip{};
 	
 
 	sg_sampler sampler{};
@@ -79,10 +73,7 @@ struct Demo : SokolEngine {
 
 	Object platform;
 
-	float ry;
-	int cur_num_particles;
-	vf3d pos[MAX_PARTICLES];
-	vf3d vel[MAX_PARTICLES];
+
 
 	static inline uint32_t xorshift32(void) {
 		static uint32_t x = 0x12345678;
@@ -97,6 +88,20 @@ struct Demo : SokolEngine {
 		sg_desc desc{};
 		desc.environment=sglue_environment();
 		sg_setup(desc);
+	}
+
+	void setupTerrain()
+	{
+		sg_pipeline_desc pipeline_desc{};
+		pipeline_desc.layout.attrs[ATTR_terrain_i_pos].format = SG_VERTEXFORMAT_FLOAT3;
+		pipeline_desc.layout.attrs[ATTR_terrain_i_norm].format = SG_VERTEXFORMAT_FLOAT3;
+		pipeline_desc.layout.attrs[ATTR_terrain_i_uv].format = SG_VERTEXFORMAT_FLOAT2;
+		pipeline_desc.shader = sg_make_shader(default_shader_desc(sg_query_backend()));
+		pipeline_desc.index_type = SG_INDEXTYPE_UINT32;
+		pipeline_desc.cull_mode = SG_CULLMODE_FRONT;
+		pipeline_desc.depth.write_enabled = true;
+		pipeline_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
+		terrain_pip = sg_make_pipeline(pipeline_desc);
 	}
 
 	void setupLights()
@@ -148,6 +153,7 @@ struct Demo : SokolEngine {
 		objects[0].scale = { 1,1,1 };
 		objects[0].translation = { 0,-2,0 };
 		objects[0].updateMatrixes();
+		objects[0].objtype = TERRAIN;
 	}
 
 	void setupPlatform() {
@@ -187,11 +193,12 @@ struct Demo : SokolEngine {
         //obj.num_x=4, obj.num_y=4;
         //obj.num_ttl= obj.num_x*obj.num_y;
 		objects.push_back(Object(m, getTexture("assets/spritesheet.png")));
-		objects[0].translation = { 0,1,0 };
-		objects[0].updateMatrixes();
-		objects[0].num_x = 4; objects[0].num_y = 4;
-		objects[0].num_ttl = objects[0].num_x * objects[0].num_y;
-
+		objects[1].translation = { 0,1,0 };
+		objects[1].updateMatrixes();
+		objects[1].num_x = 4; objects[0].num_y = 4;
+		objects[1].num_ttl = objects[0].num_x * objects[0].num_y;
+		objects[1].isbillboard = true;
+		objects[1].objtype = BILLBOARD;
 	}
 
 
@@ -221,12 +228,14 @@ struct Demo : SokolEngine {
 
 		setupLinePipeline();
 
+		setupTerrain();
+
 		setupTextures();
 
 		setupSampler();
 
 		setupLights();
-		//setupPlatform();
+		
 		setupObjects();
 
 		setupBillboard();
@@ -345,11 +354,23 @@ struct Demo : SokolEngine {
 
 #pragma endregion
 
+	void updateCameraMatrixes() {
+		mat4 look_at = mat4::makeLookAt(cam.pos, cam.pos + cam.dir, { 0, 1, 0 });
+		cam.view = mat4::inverse(look_at);
+
+		//cam proj can change with window resize
+		float asp = sapp_widthf() / sapp_heightf();
+		cam.proj = mat4::makePerspective(90, asp, .001f, 1000.f);
+
+		cam.view_proj = mat4::mul(cam.proj, cam.view);
+	}
+
+
 	void userUpdate(float dt) {
 		
 		handleUserInput(dt);
 	
-		
+		updateCameraMatrixes();
 
 		for (auto& obj : objects)
 		{
@@ -366,7 +387,42 @@ struct Demo : SokolEngine {
 	}
 
 #pragma region RENDER HELPERS
-	void renderPlatform(Object& obj,const mat4& view_proj) {
+
+	void renderTerrain(Object& obj)
+	{
+		sg_apply_pipeline(terrain_pip);
+
+		sg_bindings bind{};
+		bind.vertex_buffers[0] = obj.mesh.vbuf;
+		bind.index_buffer = obj.mesh.ibuf;
+		bind.samplers[SMP_u_terrain_smp] = sampler;
+		bind.views[VIEW_u_terrain_tex] = obj.tex;
+		sg_apply_bindings(bind);
+
+		//pass transformation matrix
+		mat4 mvp = mat4::mul(cam.view_proj, obj.model);
+		vs_terrain_params_t vs_params{};
+		std::memcpy(vs_params.u_model, obj.model.m, sizeof(vs_params.u_model));
+		std::memcpy(vs_params.u_mvp, mvp.m, sizeof(mvp.m));
+		sg_apply_uniforms(UB_vs_terrain_params, SG_RANGE(vs_params));
+
+		fs_terrain_params_t fs_params{};
+
+		fs_params.u_light_pos[0] = lights[0].pos.x;
+		fs_params.u_light_pos[1] = lights[0].pos.y;
+		fs_params.u_light_pos[2] = lights[0].pos.z;
+		
+		fs_params.u_eye_pos[0] = cam.pos.x;
+		fs_params.u_eye_pos[1] = cam.pos.y;
+		fs_params.u_eye_pos[2] = cam.pos.z;
+		sg_apply_uniforms(UB_fs_terrain_params, SG_RANGE(fs_params));
+
+		sg_draw(0, 3 * obj.mesh.tris.size(), 1);
+
+	}
+
+
+	void renderObjects(Object& obj) {
 		sg_bindings bind{};
 		bind.vertex_buffers[0]=obj.mesh.vbuf;
 		bind.index_buffer= obj.mesh.ibuf;
@@ -375,7 +431,7 @@ struct Demo : SokolEngine {
 		sg_apply_bindings(bind);
 
 		//pass transformation matrix
-		mat4 mvp=mat4::mul(view_proj, obj.model);
+		mat4 mvp=mat4::mul(cam.view_proj, obj.model);
 		vs_params_t vs_params{};
 		std::memcpy(vs_params.u_model, obj.model.m, sizeof(vs_params.u_model));
 		std::memcpy(vs_params.u_mvp, mvp.m, sizeof(mvp.m));
@@ -414,7 +470,7 @@ struct Demo : SokolEngine {
 		sg_draw(0, 3* obj.mesh.tris.size(), 1);
 	}
 	
-	void renderBillboard(Object& obj,const mat4& view_proj) {
+	void renderBillboard(Object& obj) {
 		sg_bindings bind{};
 		bind.vertex_buffers[0]= obj.mesh.vbuf;
 		bind.index_buffer= obj.mesh.ibuf;
@@ -423,7 +479,7 @@ struct Demo : SokolEngine {
 		sg_apply_bindings(bind);
 
 		//pass transformation matrix
-		mat4 mvp=mat4::mul(view_proj, obj.model);
+		mat4 mvp=mat4::mul(cam.view_proj, obj.model);
 		vs_params_t vs_params{};
 		std::memcpy(vs_params.u_mvp, mvp.m, sizeof(mvp.m));
 		sg_apply_uniforms(UB_vs_params, SG_RANGE(vs_params));
@@ -484,7 +540,7 @@ struct Demo : SokolEngine {
 		mat4 cam_proj=mat4::makePerspective(90.f, sapp_widthf()/sapp_heightf(), .001f, 1000);
 		
 		//premultiply transform
-		 cam_view_proj=mat4::mul(cam_proj, cam_view);
+		// cam_view_proj=mat4::mul(cam_proj, cam_view);
 
 		sg_apply_pipeline(default_pip);
 
@@ -493,17 +549,25 @@ struct Demo : SokolEngine {
 
 		for (auto& obj : objects)
 		{
-			//if (obj.isbillboard)
-			//{
-			//	renderBillboard(obj, cam_view_proj);
-			//}
 			if (render_outlines)
 			{
 				renderObjectOutlines(obj);
 			}
 			else
 			{
-				renderPlatform(obj, cam_view_proj);
+                 switch (obj.objtype)
+				{
+				case objectType::TERRAIN:
+				{
+					renderTerrain(obj);
+				}break;
+				case objectType::OBJECT:
+				{
+					renderObjects(obj);
+				}break;
+				
+				}
+
 			}
 			
 		}

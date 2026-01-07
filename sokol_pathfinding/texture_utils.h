@@ -4,6 +4,7 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#include "Object.h"
 
 static sg_view makeTextureFromPixels(std::uint32_t* pixels, int width, int height) {
 	sg_image_desc image_desc{};
@@ -44,6 +45,7 @@ static sg_view makeUVTexture(int width, int height) {
 
 	return view;
 }
+
 
 [[nodiscard]] static ReturnCode makeTextureFromFile(sg_view& view, const std::string& filename) {
 	int width, height, channels;
