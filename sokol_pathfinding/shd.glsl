@@ -242,47 +242,4 @@ void main() {
 
 @end
 
-//@program terrain vs_terrain fs_terrain
-//
-//layout(binding=1) uniform fs_terrain_params {
-//    vec3 u_eye_pos;
-//    vec3 u_light_pos;
-//	int u_num_lights;
-//	vec4 u_light_pos[16];
-//	vec4 u_light_col[16];
-//};
-//layout(binding=0) uniform texture2D u_terrain_tex;
-//layout(binding=0) uniform sampler u_terrain_smp;
-//
-//in vec3 pos;
-//in vec3 norm;
-//
-//out vec4 o_frag_col;
-//
-//void main() {
-//vec3 total_col(0,0,0);
-// for(int i=0; i<u_num_lights; i++) {
-//		vec3 l_pos=u_light_pos[i].xyz;
-//		vec3 l_col=u_light_col[i].rgb;
-//
-//
-//		vec3 N=normalize(norm);
-//		vec3 L=normalize(u_light_pos-pos);
-//		vec3 V=normalize(u_eye_pos-pos);
-//		vec3 R=reflect(-L, N);
-//
-//		float amb_mag=.2;
-//		 float diff_mag=.7*max(dot(N, L), 0);
-//
-//		//white specular
-//		float spec_mag=.3*pow(max(dot(R, V), 0), 32);
-//		vec3 spec=spec_mag*vec3(1, 1, 1);
-//		total_color += (amb_mag + diff_mag);
-//	}
-//    //sample gradient with slope
-//    vec3 up=vec3(0, 1, 0);
-//    float u=acos(dot(up, N))/3.1415927;
-//    vec4 col=texture(sampler2D(u_terrain_tex, u_terrain_smp), vec2(u, 0));
-//	
-//    o_frag_col=vec4((amb_mag+diff_mag)*col.rgb+spec, 1);
-//}
+@program terrain vs_terrain fs_terrain
