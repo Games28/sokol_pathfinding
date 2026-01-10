@@ -319,6 +319,11 @@ struct Demo : SokolEngine {
 			billboard_nodes[count].scale = { 0.4f,0.4f,0.4f };
 			billboard_nodes[count].translation = n->pos;
 			billboard_nodes[count].updateMatrixes();
+			billboard_nodes[count].num_x = 1;
+			billboard_nodes[count].num_y = 1;
+			billboard_nodes[count].num_ttl = billboard_nodes[count].num_x * billboard_nodes[count].num_y;
+
+			count++;
 
 		}
 	}
@@ -360,10 +365,16 @@ struct Demo : SokolEngine {
 		
 		setupObjects();
 
-		setupBillboard();
+		
+		//setup nodes
 		setupNodes();
-
 		setupNodeBillboards();
+
+
+		setupBillboard();
+		
+
+		
 		setupDisplayPassAction();
 
 		setupDefaultPipeline();
@@ -523,6 +534,7 @@ struct Demo : SokolEngine {
 			
 		}
 
+		//update billboard nodes
 		for (auto& obj : billboard_nodes)
 		{
 			updateNodeBillboard(obj, dt);
@@ -678,6 +690,7 @@ struct Demo : SokolEngine {
 			
 		}
 
+		//render billboards nodes
 		for (auto& obj : billboard_nodes)
 		{
 			renderObjects(obj);
