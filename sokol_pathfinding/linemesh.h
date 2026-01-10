@@ -10,7 +10,7 @@
 
 struct LineMesh {
 	struct Vertex {
-		vf3d pos;
+		cmn::vf3d pos;
 		sg_color col;
 	};
 	std::vector<Vertex> verts;

@@ -120,7 +120,7 @@ struct mat4 {
 		return inv;
 	}
 
-	static mat4 makeTranslation(const vf3d& trans) {
+	static mat4 makeTranslation(const cmn::vf3d& trans) {
 		mat4 c=mat4::makeIdentity();
 		c(0, 3)=trans.x;
 		c(1, 3)=trans.y;
@@ -128,7 +128,7 @@ struct mat4 {
 		return c;
 	}
 
-	static mat4 makeScale(const vf3d& scl) {
+	static mat4 makeScale(const cmn::vf3d& scl) {
 		mat4 c;
 		c(0, 0)=scl.x;
 		c(1, 1)=scl.y;
@@ -168,7 +168,7 @@ struct mat4 {
 	}
 
 	//rodrigues axis-angle formula
-	static mat4 makeRotAxis(const vf3d& axis, float theta) {
+	static mat4 makeRotAxis(const cmn::vf3d& axis, float theta) {
 		float x=axis.x, y=axis.y, z=axis.z;
 		float c=cos(theta);
 		float s=sin(theta);
@@ -184,10 +184,10 @@ struct mat4 {
 
 	//from camera -> world
 	//invert this for view matrix.
-	static mat4 makeLookAt(const vf3d& eye, const vf3d& target, vf3d up) {
+	static mat4 makeLookAt(const cmn::vf3d& eye, const cmn::vf3d& target, cmn::vf3d up) {
 		//coordinate axes from RHR
-		vf3d fwd=(target-eye).norm();
-		vf3d rgt=fwd.cross(up).norm();
+		cmn::vf3d fwd=(target-eye).norm();
+		cmn::vf3d rgt=fwd.cross(up).norm();
 		up=rgt.cross(fwd);
 
 		//column vectors + translation
@@ -216,7 +216,7 @@ struct mat4 {
 
 //mat4 * vec4 implies homogeneous coordinates
 //  but im not going to make a vec4 struct for this.
-vf3d matMulVec(const mat4& m, const vf3d& v, float& w) {
+cmn::vf3d matMulVec(const mat4& m, const cmn::vf3d& v, float& w) {
 	float x=m(0, 0)*v.x+m(0, 1)*v.y+m(0, 2)*v.z+m(0, 3)*w;
 	float y=m(1, 0)*v.x+m(1, 1)*v.y+m(1, 2)*v.z+m(1, 3)*w;
 	float z=m(2, 0)*v.x+m(2, 1)*v.y+m(2, 2)*v.z+m(2, 3)*w;

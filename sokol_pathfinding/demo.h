@@ -7,23 +7,30 @@
 #include "shd.glsl.h"
 
 #include "math/v3d.h"
+#include "v2d.h"
 #include "math/mat4.h"
 
 #include "mesh.h"
 #include "Camera.h"
+#include "AABB3.h"
 #include "AABB.h"
+#include "poisson_disc.h"
+#include "Graph.h"
+#include "Triangulate.h"
 
 //for time
 #include <ctime>
+#include "Node.h"
 
 #include "texture_utils.h"
 #include "Object.h"
 
 
 
+
 //y p => x y z
 //0 0 => 0 0 1
-static vf3d polar3D(float yaw, float pitch) {
+static cmn::vf3d polar3D(float yaw, float pitch) {
 	return {
 		std::sin(yaw)*std::cos(pitch),
 		std::sin(pitch),
@@ -36,7 +43,7 @@ static vf3d polar3D(float yaw, float pitch) {
 
 struct Light
 {
-	vf3d pos;
+	cmn::vf3d pos;
 	sg_color col;
 
 };
@@ -46,7 +53,7 @@ struct Demo : SokolEngine {
 	sg_pipeline line_pip{};
 	sg_pipeline terrain_pip{};
 	
-
+	Graph graph;
 	sg_sampler sampler{};
 	bool render_outlines = false;
 
@@ -56,12 +63,19 @@ struct Demo : SokolEngine {
 	Light* mainlight;
 
 	std::vector<Object> objects;
+	std::vector<Object> billboard_nodes;
 	
 	const std::vector<std::string> Structurefilenames{
 		"assets/models/deserttest.txt",
-		"assets/models/sandspeeder.txt",
 		"assets/models/tathouse1.txt",
-		"assets/models/tathouse2.txt",
+		"assets/models/tatooinehouse1.txt",
+	};
+
+	const std::vector<std::string> texturefilenames
+	{
+		"assets/poust_1.png",
+		"assets/GroundSand.png",
+		"assets/T_pillar.png"
 	};
 
 	sg_view tex_blank{};
@@ -146,14 +160,100 @@ struct Demo : SokolEngine {
 
 	void setupObjects()
 	{
-		Mesh m;
-		auto status = Mesh::loadFromOBJ(m, Structurefilenames[0]);
-		if (!status.valid) m = Mesh::makeCube();
-		objects.push_back(Object(m, getTexture("assets/poust_1.png")));
-		objects[0].scale = { 1,1,1 };
-		objects[0].translation = { 0,-2,0 };
-		objects[0].updateMatrixes();
-		objects[0].objtype = TERRAIN;
+		std::vector<cmn::vf3d> poses
+		{
+			{ 0,-2,0 },
+			{ 5,-2,-7 },
+			{ -5,-2,3 }
+		};
+
+		std::vector<cmn::vf3d> scales
+		{
+			{2,2,2},
+			{0.5, 0.5f,0.5f},
+			{0.5, 0.5f,0.5f}
+		};
+
+		for (int i = 0; i < Structurefilenames.size(); i++)
+		{
+			Mesh m;
+			auto status = Mesh::loadFromOBJ(m, Structurefilenames[i]);
+			if (!status.valid) m = Mesh::makeCube();
+			objects.push_back(Object(m, getTexture(texturefilenames[i])));
+			objects[i].scale = scales[i];
+			objects[i].translation = poses[i];
+			objects[i].updateMatrixes();
+		}
+	
+	}
+
+	void setupNodes()
+	{
+		//randomly sample points on xz plane
+		Object terrian = objects[0];
+
+		AABB3 bounds = terrian.getAABB();
+		auto xz_pts = poissonDiscSample({ {bounds.min.x,bounds.min.z}, {bounds.max.x,bounds.max.z} }, 2);
+
+		//project pts on to terrain
+		std::unordered_map<cmn::vf2d*, Node*> xz2way;
+		for (auto& p : xz_pts)
+		{
+			cmn::vf3d orig(p.x, bounds.min.y - .1f, p.y);
+			cmn::vf3d dir(0, 1, 0);
+			float dist = terrian.intersectRay(orig,dir);
+			graph.nodes.push_back(new Node(orig + (.2f + dist) * dir));
+			xz2way[&p] = graph.nodes.back();
+
+		}
+
+		//trangulate and add links
+		auto tris =delaunay::triangulate(xz_pts);
+		auto edges = delaunay::extractEdges(tris);
+		
+		for (const auto& e : edges)
+		{
+			auto a = xz2way[&xz_pts[e.p[0]]];
+			auto b = xz2way[&xz_pts[e.p[1]]];
+			graph.addLink(a, b);
+			graph.addLink(b, a);
+		}
+
+		//remove any nodes in way of obstacle
+		for (auto it = graph.nodes.begin(); it != graph.nodes.end();)
+		{
+			auto& n = *it;
+			//check if inside any meshes
+			bool blocked = false;
+			for (int i = 1; i < objects.size(); i++)
+			{
+				if (objects[i].contains(n->pos))
+				{
+					blocked = true;
+					break;
+				}
+			}
+
+			if (blocked)
+			{
+				for (auto& o : graph.nodes)
+				{
+					auto oit = std::find(o->links.begin(), o->links.end(), n);
+					if (oit != o->links.end()) o->links.erase(oit);
+				}
+
+				delete n;
+				it = graph.nodes.erase(it);
+
+			}
+			else
+			{
+				it++;
+			}
+
+		}
+
+
 	}
 
 	void setupPlatform() {
@@ -185,23 +285,43 @@ struct Demo : SokolEngine {
 		m.updateVertexBuffer();
 		m.updateIndexBuffer();
 
-        //obj.translation={0, 1, 0};
-        //obj.isbillboard = true;
-        //obj.draggable = true;
-        //
-        //
-        //obj.num_x=4, obj.num_y=4;
-        //obj.num_ttl= obj.num_x*obj.num_y;
 		objects.push_back(Object(m, getTexture("assets/spritesheet.png")));
-		objects[1].translation = { 0,1,0 };
-		objects[1].updateMatrixes();
-		objects[1].num_x = 4; objects[0].num_y = 4;
-		objects[1].num_ttl = objects[0].num_x * objects[0].num_y;
-		objects[1].isbillboard = true;
-		objects[1].objtype = BILLBOARD;
+		objects[objects.size() - 1].translation = { 0,1,0 };
+		objects[objects.size() - 1].updateMatrixes();
+		objects[objects.size() - 1].num_x = 4; objects[objects.size() - 1].num_y = 4;
+		objects[objects.size() - 1].num_ttl = objects[objects.size() - 1].num_x * objects[objects.size() - 1].num_y;
+		objects[objects.size() - 1].isbillboard = true;
+	
 	}
 
+	void setupNodeBillboards()
+	{
+		int count = 0;
+		for (const auto& n : graph.nodes)
+		{
+			
+			Object obj;
+			Mesh& m = obj.mesh;
+			m.verts = {
+				{{-.5f, .5f, 0}, {0, 0, 1}, {0, 0}},//tl
+				{{.5f, .5f, 0}, {0, 0, 1}, {1, 0}},//tr
+				{{-.5f, -.5f, 0}, {0, 0, 1}, {0, 1}},//bl
+				{{.5f, -.5f, 0}, {0, 0, 1}, {1, 1}}//br
+			};
+			m.tris = {
+				{0, 2, 1},
+				{1, 2, 3}
+			};
+			m.updateVertexBuffer();
+			m.updateIndexBuffer();
 
+			billboard_nodes.push_back(Object(m, tex_uv));
+			billboard_nodes[count].scale = { 0.4f,0.4f,0.4f };
+			billboard_nodes[count].translation = n->pos;
+			billboard_nodes[count].updateMatrixes();
+
+		}
+	}
 
 	//clear to bluish
 	void setupDisplayPassAction() {
@@ -230,6 +350,8 @@ struct Demo : SokolEngine {
 
 		setupTerrain();
 
+		
+
 		setupTextures();
 
 		setupSampler();
@@ -239,8 +361,9 @@ struct Demo : SokolEngine {
 		setupObjects();
 
 		setupBillboard();
+		setupNodes();
 
-		
+		setupNodeBillboards();
 		setupDisplayPassAction();
 
 		setupDefaultPipeline();
@@ -276,12 +399,12 @@ struct Demo : SokolEngine {
 		
 
 		//move forward, backward
-		vf3d fb_dir(std::sin(cam.yaw), 0, std::cos(cam.yaw));
+		cmn::vf3d fb_dir(std::sin(cam.yaw), 0, std::cos(cam.yaw));
 		if(getKey(SAPP_KEYCODE_W).held) cam.pos+=5.f*dt*fb_dir;
 		if(getKey(SAPP_KEYCODE_S).held) cam.pos-=3.f*dt*fb_dir;
 
 		//move left, right
-		vf3d lr_dir(fb_dir.z, 0, -fb_dir.x);
+		cmn::vf3d lr_dir(fb_dir.z, 0, -fb_dir.x);
 		if(getKey(SAPP_KEYCODE_A).held) cam.pos+=4.f*dt*lr_dir;
 		if(getKey(SAPP_KEYCODE_D).held) cam.pos-=4.f*dt*lr_dir;
 
@@ -298,16 +421,34 @@ struct Demo : SokolEngine {
 		handleCameraMovement(dt);
 	}
 
+	void updateNodeBillboard(Object& obj, float dt)
+	{
+		//move with player 
+		cmn::vf3d eye_pos = obj.translation;
+		cmn::vf3d target = cam.pos;
+
+		cmn::vf3d y_axis(0, 1, 0);
+		cmn::vf3d z_axis = (target - eye_pos).norm();
+		cmn::vf3d x_axis = y_axis.cross(z_axis).norm();
+		y_axis = z_axis.cross(x_axis);
+
+		//slightly different than makeLookAt.
+		mat4& m = obj.model;
+		m(0, 0) = x_axis.x, m(0, 1) = y_axis.x, m(0, 2) = z_axis.x, m(0, 3) = eye_pos.x;
+		m(1, 0) = x_axis.y, m(1, 1) = y_axis.y, m(1, 2) = z_axis.y, m(1, 3) = eye_pos.y;
+		m(2, 0) = x_axis.z, m(2, 1) = y_axis.z, m(2, 2) = z_axis.z, m(2, 3) = eye_pos.z;
+		m(3, 3) = 1;
+	}
 
 	//make billboard always point at camera.
 	void updateBillboard(Object& obj, float dt) {
 		//move with player 
-		vf3d eye_pos= obj.translation;
-		vf3d target=cam.pos;
+		cmn::vf3d eye_pos= obj.translation;
+		cmn::vf3d target=cam.pos;
 
-		vf3d y_axis(0, 1, 0);
-		vf3d z_axis=(target-eye_pos).norm();
-		vf3d x_axis=y_axis.cross(z_axis).norm();
+		cmn::vf3d y_axis(0, 1, 0);
+		cmn::vf3d z_axis=(target-eye_pos).norm();
+		cmn::vf3d x_axis=y_axis.cross(z_axis).norm();
 		y_axis=z_axis.cross(x_axis);
 		
 		//slightly different than makeLookAt.
@@ -382,44 +523,17 @@ struct Demo : SokolEngine {
 			
 		}
 
+		for (auto& obj : billboard_nodes)
+		{
+			updateNodeBillboard(obj, dt);
+		}
 		
 		
 	}
 
 #pragma region RENDER HELPERS
 
-	void renderTerrain(Object& obj)
-	{
-		sg_apply_pipeline(terrain_pip);
-
-		sg_bindings bind{};
-		bind.vertex_buffers[0] = obj.mesh.vbuf;
-		bind.index_buffer = obj.mesh.ibuf;
-		bind.samplers[SMP_u_terrain_smp] = sampler;
-		bind.views[VIEW_u_terrain_tex] = obj.tex;
-		sg_apply_bindings(bind);
-
-		//pass transformation matrix
-		mat4 mvp = mat4::mul(cam.view_proj, obj.model);
-		vs_terrain_params_t vs_params{};
-		std::memcpy(vs_params.u_model, obj.model.m, sizeof(vs_params.u_model));
-		std::memcpy(vs_params.u_mvp, mvp.m, sizeof(mvp.m));
-		sg_apply_uniforms(UB_vs_terrain_params, SG_RANGE(vs_params));
-
-		fs_terrain_params_t fs_params{};
-
-		fs_params.u_light_pos[0] = lights[0].pos.x;
-		fs_params.u_light_pos[1] = lights[0].pos.y;
-		fs_params.u_light_pos[2] = lights[0].pos.z;
-		
-		fs_params.u_eye_pos[0] = cam.pos.x;
-		fs_params.u_eye_pos[1] = cam.pos.y;
-		fs_params.u_eye_pos[2] = cam.pos.z;
-		sg_apply_uniforms(UB_fs_terrain_params, SG_RANGE(fs_params));
-
-		sg_draw(0, 3 * obj.mesh.tris.size(), 1);
-
-	}
+	 
 
 
 	void renderObjects(Object& obj) {
@@ -555,21 +669,18 @@ struct Demo : SokolEngine {
 			}
 			else
 			{
-                 switch (obj.objtype)
-				{
-				case objectType::TERRAIN:
-				{
-					renderTerrain(obj);
-				}break;
-				case objectType::OBJECT:
-				{
-					renderObjects(obj);
-				}break;
+              
 				
-				}
+					renderObjects(obj);
+				
 
 			}
 			
+		}
+
+		for (auto& obj : billboard_nodes)
+		{
+			renderObjects(obj);
 		}
 		
 		sg_end_pass();

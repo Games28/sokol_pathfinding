@@ -124,17 +124,24 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="AABB.h" />
+    <ClInclude Include="AABB3.h" />
     <ClInclude Include="Camera.h" />
     <ClInclude Include="demo.h" />
+    <ClInclude Include="Graph.h" />
     <ClInclude Include="linemesh.h" />
+    <ClInclude Include="math\v3d.h" />
     <ClInclude Include="mesh.h" />
+    <ClInclude Include="Node.h" />
     <ClInclude Include="Object.h" />
+    <ClInclude Include="poisson_disc.h" />
     <ClInclude Include="return_code.h" />
     <ClInclude Include="shd.glsl.h" />
     <ClInclude Include="sokol_engine.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="texture_utils.h" />
+    <ClInclude Include="Triangulate.h" />
     <ClInclude Include="utils.h" />
+    <ClInclude Include="v2d.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />

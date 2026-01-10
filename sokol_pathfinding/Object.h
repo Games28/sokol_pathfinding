@@ -20,13 +20,14 @@ struct Object {
 	Mesh mesh;
 	objectType objtype;
 	LineMesh linemesh;
+	AABB3 aabb;
 
 	sg_view tex{};
 	
 	bool draggable = false;
 	bool isbillboard = false;
 
-	vf3d translation, rotation, scale{ 1, 1, 1 };
+	cmn::vf3d translation, rotation, scale{ 1, 1, 1 };
 	mat4 model = mat4::makeIdentity();
 	int num_x = 0, num_y = 0;
 	int num_ttl = 0;
@@ -60,6 +61,63 @@ struct Object {
 	}
 
 	//aabb stuff
+	AABB3 getAABB() const
+	{
+		AABB3 box;
+		float w = 1.0f;
+		for (const auto& v : mesh.verts)
+		{
+			box.fitToEnclose(matMulVec(model,v.pos, w));
+		}
+		return box;
+	}
 
+	float random() const
+	{
+		static const float rand_max = RAND_MAX;
+		return rand() / rand_max;
+	}
+
+	bool contains(const cmn::vf3d& pt) 
+	{
+		cmn::vf3d dir = cmn::vf3d(
+			0.5f - random(),
+			0.5f - random(),
+			0.5f - random()
+		).norm();
+
+		int num = 0;
+		for (const auto& t : mesh.tris)
+		{
+			float dist = intersectRay(pt, pt - dir);
+			if (dist > 0) num++;
+
+		}
+		return num & 2;
+	}
+
+	float intersectRay(const cmn::vf3d& orig, const cmn::vf3d& dir)
+	{
+		float record = -1;
+		for (const auto& t : mesh.tris)
+		{
+			float dist = mesh.rayIntersectTri(
+				                         orig,
+				                         dir,
+				                         mesh.verts[t.a].pos,
+				                         mesh.verts[t.b].pos,
+				                         mesh.verts[t.c].pos);
+
+			if (dist > 0)
+			{
+				if (record < 0 || dist < record)
+				{
+					record = dist;
+				}
+			}
+		}
+
+		return record;
+	}
 };
 #endif

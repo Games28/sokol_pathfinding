@@ -19,7 +19,7 @@ struct Mesh {
 	struct v2d_t { float u=0, v=0; };
 
 	struct Vertex {
-		vf3d pos, norm;
+		cmn::vf3d pos, norm;
 		v2d_t tex;
 	};
 	std::vector<Vertex> verts;
@@ -77,26 +77,28 @@ struct Mesh {
 		delete[] ibuf_data;
 	}
 
-	float rayIntersectTri(const vf3d& orig, const vf3d& dir, const vf3d& t0, const vf3d& t1, const vf3d& t2,
+	
+
+	float rayIntersectTri(const cmn::vf3d& orig, const cmn::vf3d& dir, const cmn::vf3d& t0, const cmn::vf3d& t1, const cmn::vf3d& t2,
 		float* uptr = nullptr, float* vptr = nullptr)
 	{
 		static const float epsilon = 1e-6f;
 
-		vf3d a = dir;
-		vf3d b = t0 - t1;
-		vf3d c = t0 - t2;
-		vf3d d = t0 - orig;
-		vf3d bxc = b.cross(c);
+		cmn::vf3d a = dir;
+		cmn::vf3d b = t0 - t1;
+		cmn::vf3d c = t0 - t2;
+		cmn::vf3d d = t0 - orig;
+		cmn::vf3d bxc = b.cross(c);
 		float det = a.dot(bxc);
 
 		//parallel
 		if (std::abs(det) < epsilon) return -1;
 
-		vf3d f = c.cross(a) / det;
+		cmn::vf3d f = c.cross(a) / det;
 		float u = f.dot(d);
 		if (uptr) *uptr = u;
 
-		vf3d g = a.cross(b) / det;
+		cmn::vf3d g = a.cross(b) / det;
 		float v = g.dot(d);
 		if (vptr) *vptr = v;
 
@@ -106,7 +108,7 @@ struct Mesh {
 		if (u + v > 1) return -1;
 
 		//get t
-		vf3d e = bxc / det;
+		cmn::vf3d e = bxc / det;
 		float t = e.dot(d);
 
 		//behind ray
@@ -115,22 +117,22 @@ struct Mesh {
 		return t;
 	}
 
-	static vf3d getClosePt(const vf3d& pt, const vf3d& t0, const vf3d& t1, const vf3d& t2)
+	static cmn::vf3d getClosePt(const cmn::vf3d& pt, const cmn::vf3d& t0, const cmn::vf3d& t1, const cmn::vf3d& t2)
 	{
-		vf3d ab = t1 - t0;
-		vf3d ac = t2 - t0;
+		cmn::vf3d ab = t1 - t0;
+		cmn::vf3d ac = t2 - t0;
 
-		vf3d ap = pt - t0;
+		cmn::vf3d ap = pt - t0;
 		float d1 = ab.dot(ap);
 		float d2 = ac.dot(ap);
 		if (d1 <= 0 && d2 <= 0) return t0;
 
-		vf3d bp = pt - t1;
+		cmn::vf3d bp = pt - t1;
 		float d3 = ab.dot(bp);
 		float d4 = ac.dot(bp);
 		if (d3 >= 0 && d4 <= d3) return t1;
 
-		vf3d cp = pt - t2;
+		cmn::vf3d cp = pt - t2;
 		float d5 = ab.dot(cp);
 		float d6 = ac.dot(cp);
 		if (d6 >= 0 && d5 <= d6) return t2;
@@ -432,8 +434,8 @@ struct Mesh {
 		std::ifstream file(filename);
 		if(file.fail()) return {false, "invalid filename"};
 
-		std::vector<vf3d> vertex_pos;
-		std::vector<vf3d> vertex_norm;
+		std::vector<cmn::vf3d> vertex_pos;
+		std::vector<cmn::vf3d> vertex_norm;
 		std::vector<v2d_t> vertex_tex{{0, 0}};
 
 		struct vtn_t {
@@ -460,12 +462,12 @@ struct Mesh {
 
 			std::string type; line_ss>>type;
 			if(type=="v") {
-				vf3d v;
+				cmn::vf3d v;
 				line_ss>>v.x>>v.y>>v.z;
 
 				vertex_pos.push_back(v);
 			} else if(type=="vn") {
-				vf3d n;
+				cmn::vf3d n;
 				line_ss>>n.x>>n.y>>n.z;
 
 				//ensure unit

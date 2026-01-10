@@ -12,4 +12,13 @@ static float randFloat(float b=1, float a=0) {
 	float t=std::rand()/rand_max;
 	return a+t*(b-a);
 }
+
+cmn::vf2d polar(float rad, float angle)
+{
+	cmn::vf2d result;
+	result.x = std::cosf(angle);
+	result.y = std::sinf(angle);
+	return rad * result;
+}
+
 #endif
